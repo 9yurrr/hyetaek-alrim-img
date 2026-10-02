@@ -530,8 +530,13 @@ def posts_with_label(token, label, n=100):
 
 def related_block(token, labels, hubs, exclude_url=None, n=4):
     label = next((l for l in labels if l in dict(HUBS)), None)
-    if not label:
-        return ""
+    if not label:  # 카테고리 없는 글('기타')은 최근 글로 이어줌
+        r = requests.get(f"{API}/posts", headers={"Authorization": f"Bearer {token}"}, timeout=30,
+                         params={"maxResults": n + 1, "fetchBodies": "false", "status": "live"})
+        r.raise_for_status()
+        items = [p for p in r.json().get("items", []) if p["url"] != exclude_url][:n]
+        lis = "".join(f'<li><a href="{p["url"]}">{html.escape(p["title"])}</a></li>' for p in items)
+        return f"<!--related--><h2>최근 올라온 혜택</h2><ul>{lis}</ul><!--/related-->" if lis else ""
     items = [p for p in posts_with_label(token, label, n + 1) if p["url"] != exclude_url][:n]
     lis = "".join(f'<li><a href="{p["url"]}">{html.escape(p["title"])}</a></li>' for p in items)
     hub = hubs.get(label, {}).get("url")
