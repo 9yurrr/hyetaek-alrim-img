@@ -220,6 +220,19 @@ def one_line(text, n=60):
     return html.escape(t[:n] + ("…" if len(t) > n else "")) or "공고문 참고"
 
 
+def display_name(name):
+    """제목·카드용으로 공고명 다듬기: [지역]→지역, 연도·'공고/안내'·괄호 부제 제거."""
+    n = re.sub(r"\[([^\]]+)\]\s*", lambda m: m.group(1) + " ", str(name or ""))
+    n = re.sub(r"\([^)]*\)", " ", n)
+    n = re.sub(r"20\d\d년(도)?\s*|\s*(모집\s*)?(공고|안내)(\s*안내)?\s*$", " ", n)
+    n = re.sub(r"\s*(공고|안내)\s*$", "", re.sub(r"\s+", " ", n).strip())
+    return re.sub(r"\s+", " ", n).strip() or str(name)
+
+
+def short_org(org):
+    return re.split(r"\s*·\s*", str(org or ""))[0].strip()
+
+
 def merged(svc, detail):
     s = {k: clean(v) for k, v in svc.items()}
     s.update({k: clean(v) for k, v in detail.items() if clean(v)})  # 상세가 더 길고 정확함
@@ -230,7 +243,7 @@ def render(svc, detail, image_url=None):
     s = merged(svc, detail)
     name = s.get("서비스명", "")
     org = s.get("소관기관명", "")
-    title = f"{name} 신청 방법·지원 대상 정리 ({org})"
+    title = f"{display_name(name)} 신청 방법·지원 대상 정리 ({short_org(org)})"
     src = s.get("상세조회URL") or f"https://www.gov.kr/portal/rcvfvrSvc/dtlEx/{s.get('서비스ID','')}"
     online = s.get("온라인신청사이트URL")
     updated = re.sub(r"\D", "", s.get("수정일시", ""))[:8]
@@ -307,7 +320,7 @@ def make_card(svc, path):
     d.line((M, 112, W - M, 112), fill=line, width=2)
 
     y = 150
-    for l in _wrap(d, svc.get("서비스명", ""), _font("Bold", 60), W - 2 * M, 2):
+    for l in _wrap(d, display_name(svc.get("서비스명", "")), _font("Bold", 60), W - 2 * M, 2):
         d.text((M, y), l, font=_font("Bold", 60), fill=ink); y += 78
 
     y = max(y + 28, 330)
@@ -509,6 +522,11 @@ def cmd_selftest():
     assert not is_money_notice(biz("[부산] 2026년 MICE 우수기업 및 유공 선발 공고", "지원사업"))
     assert not is_money_notice(biz("[제주] 2026년 향토음식점 지정계획 공고"))
     assert deadline_end("20261001 ~ 20261031") == date(2026, 10, 31)
+    assert display_name("[경남] 2026년 가족친화인증기업 문화활동비 지원사업 참여기업 모집 공고(일ㆍ생활균형지원사업)") == "경남 가족친화인증기업 문화활동비 지원사업 참여기업"
+    assert display_name("[제주] 2026년 하반기 착한가격업소(탐나는 점빵) 모집 공고 안내") == "제주 하반기 착한가격업소"
+    assert display_name("[강원] 화천군 2026년 농특산물 직거래 택배비 지원 공고") == "강원 화천군 농특산물 직거래 택배비 지원"
+    assert display_name("국민내일배움카드") == "국민내일배움카드"
+    assert short_org("경상남도 · 경남여성가족재단") == "경상남도"
     assert romanize("근로·자녀장려금") == "geunro-janyeojangryeogeum", romanize("근로·자녀장려금")
     assert slug_title("유아학비 (누리과정) 지원") == "yuahakbi-jiwon"
     assert len(slug_title("가" * 60)) <= 40
