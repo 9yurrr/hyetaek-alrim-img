@@ -5,6 +5,8 @@
   python publish.py preview [N]     # 발행 없이 상위 N개를 preview/*.html로 저장
   python publish.py run [N]         # 아직 안 올린 서비스 N개 발행 (기본 3)
   python publish.py run ID ID ...   # 지정한 서비스ID만 발행
+  python publish.py hubs            # 카테고리 모음 페이지(/p/...) 생성·갱신
+  python publish.py related         # 기존 글에 '함께 보면 좋은 혜택' 링크 넣기
   python publish.py selftest        # 렌더/라벨 로직 점검
 
 .env (이 폴더)
@@ -492,6 +494,7 @@ def cmd_run(env, n, only=None):
         img = f"{IMG_CDN}/{sid}.png"
         wait_cdn(img)
         title, content, labels = render(svc, detail, image_url=img)
+        content = with_related(content, related_block(token, labels, hubs=load_hubs()))
         post = blogger_insert(token, slug_title(svc["서비스명"], svc.get("소관기관명")) or sid, content, labels)
         blogger_set_title(token, post["id"], title)
         state[sid] = {"postId": post["id"], "url": post["url"], "updated": svc.get("수정일시"), "at": datetime.now().isoformat(timespec="seconds")}
@@ -499,6 +502,86 @@ def cmd_run(env, n, only=None):
         print("발행:", post["url"])
         if i < len(picked) - 1:
             time.sleep(20)  # ponytail: 고정 간격, Blogger 스팸 판정 보이면 하루 단위 분산으로
+    if picked:
+        update_hubs(token)
+
+
+# ---------- 카테고리 허브 페이지 · 관련 글 (내부 링크) ----------
+# /search/label/* 은 Blogger robots.txt가 막아 구글이 못 읽음 → 수집 가능한 /p/ 페이지로 카테고리 모음을 만든다
+
+HUBS = [("청년", "cheongnyeon"), ("신혼·출산", "sinhon-chulsan"), ("소상공인", "sosanggongin"), ("어르신", "eoreusin"),
+        ("저소득", "jeosodeuk"), ("장애인", "jangaein"), ("농어민", "nongeomin"), ("마감임박", "magam-imbak")]
+HUBS_PATH = HERE / "hubs.json"
+API = f"https://www.googleapis.com/blogger/v3/blogs/{BLOG_ID}"
+
+
+def load_hubs():
+    return json.loads(HUBS_PATH.read_text(encoding="utf-8")) if HUBS_PATH.exists() else {}
+
+
+def posts_with_label(token, label, n=100):
+    r = requests.get(f"{API}/posts", headers={"Authorization": f"Bearer {token}"}, timeout=30,
+                     params={"labels": label, "maxResults": n, "fetchBodies": "false", "status": "live"})
+    r.raise_for_status()
+    return r.json().get("items", [])
+
+
+def related_block(token, labels, hubs, exclude_url=None, n=4):
+    label = next((l for l in labels if l in dict(HUBS)), None)
+    if not label:
+        return ""
+    items = [p for p in posts_with_label(token, label, n + 1) if p["url"] != exclude_url][:n]
+    lis = "".join(f'<li><a href="{p["url"]}">{html.escape(p["title"])}</a></li>' for p in items)
+    hub = hubs.get(label, {}).get("url")
+    more = f'<p><a href="{hub}">{html.escape(label)} 지원금·혜택 전체 보기 →</a></p>' if hub else ""
+    return f"<!--related--><h2>함께 보면 좋은 {html.escape(label)} 혜택</h2><ul>{lis}</ul>{more}<!--/related-->" if lis or more else ""
+
+
+def with_related(content, block):
+    """'공식 원문' 앞에 관련 글 블록을 넣음 (이미 있으면 교체)."""
+    content = re.sub(r"<!--related-->.*?<!--/related-->", "", content, flags=re.S)
+    return content.replace("<h2>공식 원문</h2>", block + "<h2>공식 원문</h2>", 1) if block else content
+
+
+def update_hubs(token):
+    """카테고리별 모음 페이지를 만들거나 최신 목록으로 갱신."""
+    H = {"Authorization": f"Bearer {token}"}
+    hubs = load_hubs()
+    for label, slug in HUBS:
+        posts = posts_with_label(token, label)
+        title = f"{label} 지원금·혜택 모음"
+        lis = "".join(f'<li><a href="{p["url"]}">{html.escape(p["title"])}</a></li>' for p in posts)
+        body = (f"<p>{html.escape(label)} 대상 정부·지자체 지원금과 혜택을 한곳에 모았습니다. "
+                f"매일 새 지원금이 추가되며, 각 글에서 지원 대상·지원 내용·신청 기간·신청 방법을 확인할 수 있습니다.</p>"
+                + (f"<ul>{lis}</ul>" if lis else "<p>아직 등록된 글이 없습니다. 곧 업데이트됩니다.</p>")
+                + f"<p><small>기준일 {date.today():%Y.%m.%d} · 출처: 행정안전부 보조금24, 중소벤처기업부 기업마당</small></p>")
+        if label in hubs:
+            requests.patch(f"{API}/pages/{hubs[label]['id']}", headers=H, json={"title": title, "content": body}, timeout=60).raise_for_status()
+        else:
+            for wait in (0, 30, 60, 120):  # Blogger 페이지 생성은 속도 제한(429)이 빡빡함
+                time.sleep(wait)
+                r = requests.post(f"{API}/pages", headers=H, json={"title": slug, "content": body}, timeout=60)  # 영문 제목으로 /p/slug.html 확보
+                if r.status_code != 429:
+                    break
+            r.raise_for_status()
+            page = r.json()
+            requests.patch(f"{API}/pages/{page['id']}", headers=H, json={"title": title}, timeout=60).raise_for_status()
+            hubs[label] = {"id": page["id"], "url": page["url"]}
+            HUBS_PATH.write_text(json.dumps(hubs, ensure_ascii=False, indent=1), encoding="utf-8")
+        print("허브:", label, len(posts), "편", hubs[label]["url"])
+        time.sleep(3)
+
+
+def cmd_backfill_related(env):
+    """기존 글에 관련 글 블록을 넣거나 갱신."""
+    token = access_token(env)
+    hubs = load_hubs()
+    H = {"Authorization": f"Bearer {token}"}
+    for p in requests.get(f"{API}/posts", headers=H, params={"maxResults": 100, "status": "live"}, timeout=30).json().get("items", []):
+        new = with_related(p["content"], related_block(token, p.get("labels", []), hubs, exclude_url=p["url"]))
+        if new != p["content"]:
+            requests.patch(f"{API}/posts/{p['id']}", headers=H, json={"content": new}, timeout=60).raise_for_status()
+            print("관련 글:", p["title"][:30])
 
 
 def cmd_selftest():
@@ -541,6 +624,9 @@ def cmd_selftest():
     biz_s = {"서비스ID": "PBLN_1", "서비스명": "[제주] 2026년 하반기 착한가격업소(탐나는 점빵) 모집 공고 안내", "소관기관명": "제주특별자치도 · 기초자치단체", "지원내용": "도민 및 관광객 대상 착한가격업소 지원"}
     c = render(biz_s, {})[1]
     assert "<p>제주 하반기 착한가격업소: 도민 및 관광객 대상 착한가격업소 지원</p>" in c, c[:200]
+    blk = "<!--related--><h2>함께 보면 좋은 청년 혜택</h2><ul><li>x</li></ul><!--/related-->"
+    once = with_related("<p>a</p><h2>공식 원문</h2>", blk)
+    assert once.index("함께 보면") < once.index("공식 원문") and with_related(once, blk) == once
     print("selftest ok")
 
 
@@ -558,4 +644,5 @@ if __name__ == "__main__":
         cmd_selftest()
     else:
         env = load_env()
-        {"auth": lambda: cmd_auth(env), "preview": lambda: cmd_preview(env, n), "run": lambda: cmd_run(env, n, only)}[cmd]()
+        {"auth": lambda: cmd_auth(env), "preview": lambda: cmd_preview(env, n), "run": lambda: cmd_run(env, n, only),
+         "hubs": lambda: update_hubs(access_token(env)), "related": lambda: cmd_backfill_related(env)}[cmd]()
