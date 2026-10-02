@@ -636,7 +636,8 @@ def update_hubs(token):
         posts = posts_with_label(token, label)
         title = f"{label} 지원금·혜택 모음"
         lis = "".join(f'<li><a href="{p["url"]}">{html.escape(p["title"])}</a></li>' for p in posts)
-        body = (f"<p>{html.escape(label)} 대상 정부·지자체 지원금과 혜택을 한곳에 모았습니다. "
+        icon = f'<p><img src="https://cdn.jsdelivr.net/gh/9yurrr/hyetaek-alrim-img@main/brand/cats/{slug}.svg" alt="{html.escape(label)}" width="96" height="96"/></p>'
+        body = (icon + f"<p>{html.escape(label)} 대상 정부·지자체 지원금과 혜택을 한곳에 모았습니다. "
                 f"매일 새 지원금이 추가되며, 각 글에서 지원 대상·지원 내용·신청 기간·신청 방법을 확인할 수 있습니다.</p>"
                 + (f"<ul>{lis}</ul>" if lis else "<p>아직 등록된 글이 없습니다. 곧 업데이트됩니다.</p>")
                 + f"<p><small>기준일 {date.today():%Y.%m.%d} · 출처: 행정안전부 보조금24, 중소벤처기업부 기업마당</small></p>")
