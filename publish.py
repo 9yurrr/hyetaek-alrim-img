@@ -145,14 +145,16 @@ LABEL_RULES = [
     ("신혼·출산", r"출산|임신|임산부|신혼|영유아|육아|보육|아동수당|난임"),
     ("어르신", r"노인|어르신|65세|고령|기초연금"),
     ("장애인", r"장애"),
-    ("저소득", r"저소득|기초생활|차상위|수급자|긴급복지|장려금|중위소득"),
+    ("저소득", r"저소득|기초생활|차상위|수급자|긴급복지|근로장려금|자녀장려금|중위소득"),
     ("농어민", r"농업|농업인|어업|어업인|농어|임업|축산"),
     ("소상공인", r"소상공인|자영업|중소기업|창업"),
 ]
 
 
 def labels_for(svc):
-    text = " ".join(str(svc.get(k) or "") for k in ("서비스명", "지원대상", "서비스목적요약", "사용자구분"))
+    # '지원 제외 대상' 이후는 오히려 대상이 아닌 사람들이라 분류에서 뺀다 (내일배움카드: 제외 대상의 '대학생·자영업자'로 오분류됐었음)
+    target = re.split(r"제외", str(svc.get("지원대상") or ""))[0]
+    text = " ".join([str(svc.get("서비스명") or ""), target, str(svc.get("서비스목적요약") or ""), str(svc.get("사용자구분") or "")])
     labels = [name for name, pat in LABEL_RULES if re.search(pat, text)]
     if is_closing_soon(svc.get("신청기한")):
         labels.append("마감임박")
@@ -596,6 +598,7 @@ def cmd_selftest():
     assert "<p>콜센터/129</p><p>국토부/1599</p>" in content
     assert "None" not in content and "기준일 2026.09.30" in content
     assert labels_for(svc)[0] == "청년"
+    assert labels_for({"서비스명": "국민내일배움카드", "지원대상": "○ 국민 누구나\n○ 지원 제외 대상\n ② 대학생\n ③ 자영업자"}) == ["기타"]
     assert is_closing_soon("2026.10.01 ~ 2026.10.05", today=date(2026, 10, 1))
     assert not is_closing_soon("상시신청", today=date(2026, 10, 1))
     assert is_expired("2026.05.04~2026.05.20", today=date(2026, 10, 1))
