@@ -394,11 +394,17 @@ def romanize(text):
     return re.sub(r"\s+", "-", "".join(out).strip()).strip("-")
 
 
-def slug_title(name):
+def slug_title(name, org=""):
     # Blogger는 발행 시점 제목으로 URL을 만들고 이후 제목을 바꿔도 URL은 유지됨
     name = re.sub(r"\[.*?\]|\(.*?\)|20\d\d년?|상반기|하반기|공고|안내", " ", name)  # 지역태그·연도·군말 제거
+    for o in re.split(r"[\s·]+", org or ""):
+        if len(o) >= 2:
+            name = name.replace(o, " ")  # 기관명은 주소에서 뺌 (내용 단어가 잘려나가는 것 방지)
     s = romanize(name)
-    return s[:40].rsplit("-", 1)[0] if len(s) > 40 else s
+    if len(s) <= 40:
+        return s
+    cut = s[:40].rsplit("-", 1)[0]
+    return cut if len(cut) >= 20 else s[:40].rstrip("-")
 
 
 def blogger_insert(token, title, content, labels):
@@ -471,7 +477,7 @@ def cmd_run(env, n, only=None):
         img = f"{IMG_CDN}/{sid}.png"
         wait_cdn(img)
         title, content, labels = render(svc, detail, image_url=img)
-        post = blogger_insert(token, slug_title(svc["서비스명"]) or sid, content, labels)
+        post = blogger_insert(token, slug_title(svc["서비스명"], svc.get("소관기관명")) or sid, content, labels)
         blogger_set_title(token, post["id"], title)
         state[sid] = {"postId": post["id"], "url": post["url"], "updated": svc.get("수정일시"), "at": datetime.now().isoformat(timespec="seconds")}
         STATE_PATH.write_text(json.dumps(state, ensure_ascii=False, indent=1), encoding="utf-8")
@@ -506,6 +512,7 @@ def cmd_selftest():
     assert romanize("근로·자녀장려금") == "geunro-janyeojangryeogeum", romanize("근로·자녀장려금")
     assert slug_title("유아학비 (누리과정) 지원") == "yuahakbi-jiwon"
     assert len(slug_title("가" * 60)) <= 40
+    assert slug_title("국토교통부 전세보증금반환보증 보증료 지원", "국토교통부").startswith("jeonsebojeunggeum")
     assert render(svc, detail, image_url="https://x/c.png")[1].startswith('<p><img src="https://x/c.png"')
     import tempfile
     from PIL import Image
