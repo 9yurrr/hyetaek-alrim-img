@@ -332,7 +332,7 @@ def make_card(svc, path):
         y += 62
 
     d.line((M, H - 96, W - M, H - 96), fill=line, width=2)
-    d.text((M, H - 72), clean(svc.get("소관기관명")), font=_font("SemiBold", 26), fill=ink)
+    d.text((M, H - 72), short_org(clean(svc.get("소관기관명"))), font=_font("SemiBold", 26), fill=ink)
     src = "출처: " + svc.get("출처", "행정안전부 보조금24")
     d.text((W - M - d.textlength(src, font=_font("Regular", 22)), H - 70), src, font=_font("Regular", 22), fill=mute)
     img.save(path, "PNG", optimize=True)
