@@ -264,7 +264,9 @@ def render(svc, detail, image_url=None):
         ("문의처", s.get("문의처") or s.get("전화문의")),
         ("근거 법령", s.get("법령")),
     ]
-    summary = s.get("서비스목적") or s.get("서비스목적요약") or name
+    # 목록 요약(본문 첫 문단). 목적 설명이 없는 공고는 '짧은 이름: 지원내용 한 줄'로
+    summary = s.get("서비스목적") or s.get("서비스목적요약") or (
+        f"{display_name(name)}: {html.unescape(one_line(s.get('지원내용'), 90))}" if s.get("지원내용") else display_name(name))
     body = [f'<p><img src="{image_url}" alt="{html.escape(name)} 지원 대상·내용·신청기한 요약" width="1200" height="675"/></p>'] if image_url else []
     body += [
         f"<p>{html.escape(re.sub(BULLET, '', summary))}</p>",
@@ -536,6 +538,9 @@ def cmd_selftest():
     from PIL import Image
     p = make_card(merged(svc, detail), Path(tempfile.gettempdir()) / "hx_card_test.png")
     assert Image.open(p).size == (1200, 675)
+    biz_s = {"서비스ID": "PBLN_1", "서비스명": "[제주] 2026년 하반기 착한가격업소(탐나는 점빵) 모집 공고 안내", "소관기관명": "제주특별자치도 · 기초자치단체", "지원내용": "도민 및 관광객 대상 착한가격업소 지원"}
+    c = render(biz_s, {})[1]
+    assert "<p>제주 하반기 착한가격업소: 도민 및 관광객 대상 착한가격업소 지원</p>" in c, c[:200]
     print("selftest ok")
 
 
