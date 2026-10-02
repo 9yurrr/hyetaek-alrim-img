@@ -195,9 +195,20 @@ def clean(v):
 BULLET = r"^[ㅇ○◦•·▶☞※□■\-]\s*"
 
 
+def tidy(text):
+    """원문에서 줄바꿈 없이 붙은 번호 항목을 나누고, 괄호 속 한자를 지움 (읽기 쉽게)."""
+    t = clean(text)
+    t = re.sub(r"\([\u4e00-\u9fff]+\)", "", t)                       # 주소득자(主所得者) → 주소득자
+    t = re.sub(r"(?<=[가-힣)\]>.])\s*(?=\d{1,2}\.\s?[가-힣])", "\n", t)  # ...경우2. 중한 → 줄바꿈
+    t = re.sub(r"(?<=\S)\s*(?=[①-⑳])", "\n", t)                        # ①…②… → 줄바꿈
+    t = re.sub(r"(?<=[원다음함)])\s*(?=\*\s?[가-힣\d])", "\n", t)         # 원* 7인 → 줄바꿈
+    t = re.sub(r"(\(제\d{1,3}조[^)]*\))(?=[가-힣])", r"\1\n", t)          # 법령(제12조)국민 → 줄바꿈
+    return t
+
+
 def para(text):
     """공공데이터 원문(줄바꿈·'ㅇ/○' 기호)을 HTML로. 기호 줄은 목록, 들여쓴 이어지는 줄은 앞 항목에 붙임."""
-    text = clean(text).replace("||", "\n")
+    text = tidy(text).replace("||", "\n")
     if not text:
         return ""
     out, items = [], []
@@ -243,6 +254,62 @@ def merged(svc, detail):
     return s
 
 
+# 중학생도 읽을 수 있게: 글에 실제로 나온 어려운 말만 골라 풀어준다 (원문에 없는 내용은 만들지 않음)
+GLOSSARY = [
+    ("기준 중위소득", "우리나라 모든 가구를 소득 순서로 줄 세웠을 때 딱 가운데 있는 가구의 소득이에요. '중위소득 50% 이하'는 그 절반 이하를 버는 가구라는 뜻이에요."),
+    ("중위소득", "우리나라 모든 가구를 소득 순서로 줄 세웠을 때 딱 가운데 있는 가구의 소득이에요."),
+    ("기초생활수급자", "소득과 재산이 기준보다 적어서 나라에서 생활비·의료비·집세·교육비 지원을 받는 사람이에요."),
+    ("수급자", "나라에서 정한 기준에 맞아 지원(급여)을 받고 있는 사람이에요."),
+    ("차상위", "기초생활수급자는 아니지만 소득이 기준 중위소득 50% 이하인 저소득층이에요."),
+    ("소득인정액", "실제로 버는 돈에 집·자동차 같은 재산을 돈으로 바꿔 계산한 금액을 더한 값이에요."),
+    ("구비서류", "신청할 때 함께 내야 하는 서류예요."),
+    ("세대주", "주민등록상 한 집(세대)을 대표하는 사람이에요."),
+    ("세대원", "주민등록상 같은 집(세대)에 함께 올라 있는 가족이에요."),
+    ("무주택", "본인 이름으로 된 집이 없다는 뜻이에요."),
+    ("근로소득", "회사 등에서 일하고 받은 돈(월급)이에요."),
+    ("사업소득", "가게나 사업을 해서 번 돈이에요."),
+    ("행정복지센터", "사는 동네의 동사무소(주민센터)예요."),
+    ("주민센터", "사는 동네의 동사무소예요. 지금은 '행정복지센터'라고도 불러요."),
+    ("읍면동", "사는 곳의 읍사무소·면사무소·동사무소(주민센터)를 말해요."),
+    ("복지로", "보건복지부가 운영하는 복지 서비스 신청 사이트(bokjiro.go.kr)예요."),
+    ("정부24", "정부 민원과 서비스를 신청하는 사이트(gov.kr)예요."),
+    ("보증료", "보증을 서 주는 대가로 내는 수수료예요."),
+    ("이차보전", "대출 이자 중 일부를 나라나 지자체가 대신 내 주는 것이에요."),
+    ("특례보증", "보증기관이 조건을 완화해서 대출 보증을 서 주는 것이에요."),
+    ("매칭", "내가 모은 돈만큼 나라가 돈을 더 얹어 주는 방식이에요."),
+    ("소상공인", "직원 수가 적은 작은 가게나 회사를 운영하는 사람이에요."),
+    ("예비창업자", "아직 사업자등록을 하지 않았지만 곧 창업하려는 사람이에요."),
+    ("사업자등록", "가게나 회사를 세무서에 정식으로 등록하는 것이에요."),
+    ("소관기관", "이 제도를 맡아서 운영하는 정부 기관이에요."),
+    ("고용24", "고용노동부가 운영하는 일자리·고용 서비스 신청 사이트(work24.go.kr)예요."),
+    ("고용센터", "고용노동부가 지역마다 운영하는 일자리 지원 기관이에요."),
+    ("시군구청", "사는 지역의 시청·군청·구청이에요."),
+]
+
+
+def glossary_for(text):
+    found, seen = [], set()
+    for term, meaning in GLOSSARY:
+        if term in text and not any(term in t for t in seen):  # '중위소득'은 '기준 중위소득'이 이미 있으면 생략
+            found.append((term, meaning)); seen.add(term)
+    return found
+
+
+def split_exclusion(text):
+    """지원대상을 '받을 수 있는 사람'과 '제외 대상'으로 나눔."""
+    t = tidy(text)
+    parts = re.split(r"[^\n]*제외[^\n]*\n?", t, maxsplit=1)
+    if len(parts) == 2 and parts[1].strip():
+        return parts[0], parts[1]
+    return t, ""
+
+
+def steps(text):
+    """신청 방법을 번호 목록으로."""
+    lines = [re.sub(BULLET, "", l.strip()) for l in tidy(text).replace("||", "\n").replace("\r", "").split("\n") if l.strip()]
+    return "<ol>" + "".join(f"<li>{html.escape(l)}</li>" for l in lines) + "</ol>" if lines else ""
+
+
 def render(svc, detail, image_url=None):
     s = merged(svc, detail)
     name = s.get("서비스명", "")
@@ -252,21 +319,19 @@ def render(svc, detail, image_url=None):
     online = s.get("온라인신청사이트URL")
     updated = re.sub(r"\D", "", s.get("수정일시", ""))[:8]
     updated_txt = f"{updated[:4]}.{updated[4:6]}.{updated[6:8]}" if len(updated) == 8 else date.today().strftime("%Y.%m.%d")
+    who, not_who = split_exclusion(s.get("지원대상"))
 
     rows = [
-        ("누가", one_line(s.get("지원대상"))),
-        ("무엇을", one_line(s.get("지원내용"))),
-        ("언제까지", one_line(s.get("신청기한"), 40)),
-        ("어디서", one_line(s.get("접수기관명") or s.get("접수기관") or s.get("신청방법"), 40)),
+        ("누가 받아요?", one_line(who)),
+        ("무엇을 받아요?", one_line(s.get("지원내용"))),
+        ("언제까지 신청해요?", one_line(s.get("신청기한"), 40)),
+        ("어디서 신청해요?", one_line(s.get("접수기관명") or s.get("접수기관") or s.get("신청방법"), 40)),
     ]
     sections = [
-        ("지원 대상", s.get("지원대상")),
-        ("선정 기준", "" if s.get("선정기준") == s.get("지원대상") else s.get("선정기준")),
-        ("지원 내용", s.get("지원내용")),
-        ("신청 방법", s.get("신청방법")),
-        ("구비 서류", s.get("구비서류")),
-        ("문의처", s.get("문의처") or s.get("전화문의")),
-        ("근거 법령", s.get("법령")),
+        ("누가 받을 수 있나요?", who),
+        ("이런 분은 받을 수 없어요", not_who),
+        ("이런 조건도 확인하세요", "" if s.get("선정기준") == s.get("지원대상") else s.get("선정기준")),
+        ("무엇을, 얼마나 받나요?", s.get("지원내용")),
     ]
     # 목록 요약(본문 첫 문단). 목적 설명이 없는 공고는 '짧은 이름: 지원내용 한 줄'로
     summary = s.get("서비스목적") or s.get("서비스목적요약") or (
@@ -276,11 +341,24 @@ def render(svc, detail, image_url=None):
         f"<p>{html.escape(re.sub(BULLET, '', summary))}</p>",
         "<h2>한눈에 보기</h2><table>"
         + "".join(f"<tr><th>{k}</th><td>{v}</td></tr>" for k, v in rows)
-        + f"<tr><th>담당 기관</th><td>{html.escape(org)}</td></tr></table>",
+        + f"<tr><th>맡은 기관</th><td>{html.escape(org)}</td></tr></table>",
     ]
     for h, v in sections:
         if para(v):
             body.append(f"<h2>{h}</h2>{para(v)}")
+    how = steps(s.get("신청방법"))
+    if how:
+        multi = how.count("<li>") > 1
+        body.append(f"<h2>어떻게 신청하나요?{' (순서대로)' if multi else ''}</h2>" + (how if multi else f"<p>{re.sub(r'</?(ol|li)>', '', how)}</p>"))
+    if para(s.get("구비서류")):
+        body.append(f"<h2>신청할 때 필요한 서류</h2>{para(s.get('구비서류'))}")
+    if para(s.get("문의처") or s.get("전화문의")):
+        body.append(f"<h2>궁금하면 여기에 물어보세요</h2>{para(s.get('문의처') or s.get('전화문의'))}")
+    words = glossary_for(" ".join(str(v) for v in s.values()))
+    if words:
+        body.append("<h2>어려운 말 풀이</h2><ul>" + "".join(f"<li><b>{html.escape(t)}</b>: {html.escape(m)}</li>" for t, m in words) + "</ul>")
+    if para(s.get("법령")):
+        body.append(f"<h2>근거 법령</h2>{para(s.get('법령'))}")
     links = f'<a href="{html.escape(src)}" rel="nofollow noopener" target="_blank">정부24 원문 보기</a>'
     if online:
         links += f' · <a href="{html.escape(online)}" rel="nofollow noopener" target="_blank">온라인 신청 바로가기</a>'
@@ -635,6 +713,9 @@ def cmd_selftest():
     blk = "<!--related--><h2>함께 보면 좋은 청년 혜택</h2><ul><li>x</li></ul><!--/related-->"
     once = with_related("<p>a</p><h2>공식 원문</h2>", blk)
     assert once.index("함께 보면") < once.index("공식 원문") and with_related(once, blk) == once
+    assert tidy("사유>1. 사망한 경우2. 질병") == "사유>\n1. 사망한 경우\n2. 질병"
+    assert tidy("①공무원②대학생") == "①공무원\n②대학생" and tidy("주소득자(主所得者)") == "주소득자"
+    assert tidy("75% 이하, 1.5배 1,923,179원") == "75% 이하, 1.5배 1,923,179원"
     print("selftest ok")
 
 
