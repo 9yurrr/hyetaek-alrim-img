@@ -27,8 +27,14 @@ BLOG_ID = "6460584705311207680"
 GOV24 = "https://api.odcloud.kr/api/gov24/v3"
 
 
+def _clean_secret(k, v):
+    """Secrets에 붙여넣을 때 섞이기 쉬운 공백·따옴표·'NAME=' 접두어 제거."""
+    v = v.strip().strip('"').strip("'").strip()
+    return v[len(k) + 1:].strip() if v.startswith(k + "=") else v
+
+
 def load_env():
-    env = {k: v for k, v in os.environ.items() if k.startswith(("DATA_GO_KR_", "BLOGGER_"))}
+    env = {k: _clean_secret(k, v) for k, v in os.environ.items() if k.startswith(("DATA_GO_KR_", "BLOGGER_"))}
     if ENV_PATH.exists():
         for line in ENV_PATH.read_text(encoding="utf-8").splitlines():
             if "=" in line and not line.lstrip().startswith("#"):
@@ -363,7 +369,9 @@ def access_token(env):
     r = requests.post("https://oauth2.googleapis.com/token", data={
         "client_id": env["BLOGGER_CLIENT_ID"], "client_secret": env["BLOGGER_CLIENT_SECRET"],
         "refresh_token": env["BLOGGER_REFRESH_TOKEN"], "grant_type": "refresh_token"}, timeout=30)
-    r.raise_for_status()
+    if not r.ok:  # 값은 찍지 않고 길이·구글 오류코드만 (Secrets 오입력 진단용)
+        lens = {k: len(env.get(k, "")) for k in ("BLOGGER_CLIENT_ID", "BLOGGER_CLIENT_SECRET", "BLOGGER_REFRESH_TOKEN")}
+        sys.exit(f"구글 토큰 발급 실패 {r.status_code} {r.json().get('error')}: {r.json().get('error_description')} / 길이 {lens}")
     return r.json()["access_token"]
 
 
