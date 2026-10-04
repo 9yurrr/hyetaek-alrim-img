@@ -68,9 +68,28 @@ def fetch_candidates(env, pages=5, per_page=200):
         items += d.get("data", [])
         if p * per_page >= d.get("totalCount", 0):
             break
-    items = [x for x in items if not is_expired(x.get("신청기한"))]
-    items.sort(key=lambda x: (x.get("소관기관유형") != "중앙행정기관", -int(x.get("조회수") or 0)))
+    # 개인이 받는 혜택만 (법인·시설 대상 제외), 마감 지난 것 제외
+    items = [x for x in items if not is_expired(x.get("신청기한")) and re.search(r"개인|가구", str(x.get("사용자구분") or ""))
+             and not re.search(r"가축|구제역|축산|사육|도축|방역|간소화|서비스 제공|발급|조회|신고", str(x.get("서비스명") or ""))]  # 축산 행정은 개인 검색 수요가 거의 없음
+    # 우선순위: 전국(중앙부처) → 그 안에서 다가오는 시즌 혜택 → 조회수(검색 수요 대용)
+    items.sort(key=lambda x: (x.get("소관기관유형") != "중앙행정기관", not is_seasonal(x), -int(x.get("조회수") or 0)))
     return items
+
+
+# 시즌 혜택: 이번 달·다음 달 키워드에 걸리면 먼저 발행 (시즌 2~4주 전에 색인돼 있도록)
+SEASON = {
+    1: "연말정산|난방|동절기|에너지바우처|설",  2: "연말정산|입학|신학기|학자금",  3: "입학|신학기|학자금|장학",
+    4: "학자금|장학|종합소득세",  5: "근로장려금|자녀장려금|종합소득세|어버이",  6: "장학|여름|폭염",
+    7: "폭염|냉방|에너지바우처|휴가",  8: "폭염|냉방|2학기|학자금",  9: "추석|근로장려금|학자금|독감|인플루엔자",
+    10: "독감|인플루엔자|에너지바우처|난방비|연탄",  11: "에너지바우처|난방비|연탄|동절기|연말정산",
+    12: "연말정산|난방|동절기|에너지바우처|연탄",
+}
+
+
+def is_seasonal(x, today=None):
+    m = (today or date.today()).month
+    pat = SEASON[m] + "|" + SEASON[m % 12 + 1]
+    return bool(re.search(pat, str(x.get("서비스명", ""))))  # 이름에 시즌어가 있을 때만 (설명문 속 단어로는 과대 매칭)
 
 
 def fetch_detail(env, service_id):
@@ -108,13 +127,17 @@ def bizinfo_to_svc(it):
 
 
 MONEY = r"지원금|보조금|보증|자금|융자|대출|이차보전|이자|바우처|수당|장려금|감면|환급|택배비|임대료|인건비|지원사업|무상|지원 계획"
-NOT_MONEY = r"선발|선정계획|포상|유공|시상|지정계획|우수기업|설명회|박람회|전시회|세미나|행사|교육생|아카데미|기업인의 날|기반구축|실증|R&D|기술개발|IR|상담회"
+NOT_MONEY = (r"선발|선정계획|포상|유공|시상|지정계획|우수기업|설명회|박람회|전시회|세미나|행사|교육생|아카데미|기업인의 날"
+             r"|기반구축|실증|R&D|기술개발|IR|상담회|연구개발|육성|시험분석|인증|품질|전문기업|수출|컨설팅|참여기업|대상기업|일경험|고부가가치|사업화")
+# 기업마당은 대부분 기업 대상 → 개인·소상공인이 직접 받는 공고만 남김 (개인 검색 수요 기준)
+PERSONAL_TARGET = r"소상공인|자영업|예비창업|개인|청년|농업인|어업인|농가|어가|여성|1인"
 
 
 def is_money_notice(x):
-    """검색 수요가 있는 '받는 돈' 공고만. 포상·행사·지정 공고는 제외. ponytail: 키워드 휴리스틱, 오분류 보이면 규칙 추가"""
+    """검색 수요가 있는 '받는 돈' 공고만. 포상·행사·기업 대상 사업은 제외. ponytail: 키워드 휴리스틱, 오분류 보이면 규칙 추가"""
     t = x["서비스명"] + " " + x["지원내용"][:300]
-    return bool(re.search(MONEY, t)) and not re.search(NOT_MONEY, x["서비스명"])
+    personal = re.search(PERSONAL_TARGET, x.get("지원대상", "") + " " + x["서비스명"])
+    return bool(re.search(MONEY, t)) and bool(personal) and not re.search(NOT_MONEY, x["서비스명"])
 
 
 def fetch_bizinfo(env, rows=100):
@@ -129,13 +152,15 @@ def fetch_bizinfo(env, rows=100):
     return items
 
 
-def all_candidates(env):
-    """보조금24(상시 혜택)와 기업마당(마감 있는 공고)을 번갈아."""
-    a, b = fetch_candidates(env), fetch_bizinfo(env)
-    out = []
-    for i in range(max(len(a), len(b))):
-        out += [x[i] for x in (a, b) if i < len(x)]
-    return out
+BIZ_PER_RUN = 1  # 기업마당 공고는 하루 최대 1편 (지역·마감 공고라 검색 수요가 작음)
+
+
+def all_candidates(env, state=None):
+    """보조금24 전국 개인 혜택 위주, 기업마당은 아직 안 올린 것 중 1편만 섞음."""
+    state = state or {}
+    a = fetch_candidates(env)
+    b = [x for x in fetch_bizinfo(env) if x["서비스ID"] not in state][:BIZ_PER_RUN]
+    return a[:2] + b + a[2:]  # 기업마당 1편은 3번째 자리 (하루 5편 안에 들어가게)
 
 
 # ---------- 렌더링 ----------
@@ -310,11 +335,22 @@ def steps(text):
     return "<ol>" + "".join(f"<li>{html.escape(l)}</li>" for l in lines) + "</ol>" if lines else ""
 
 
+def make_title(s):
+    """실제 검색어(조건·금액·신청방법)를 앞쪽에. 지자체 혜택은 이름이 겹치므로 지역(기관)을 앞에 붙임."""
+    dn = display_name(s.get("서비스명", ""))
+    if str(s.get("서비스ID", "")).startswith("PBLN_"):
+        return f"{dn} {'' if re.search(r'지원(사업)?$', dn) else '지원 '}조건·신청방법"
+    org = short_org(s.get("소관기관명", ""))
+    if s.get("소관기관유형") and s.get("소관기관유형") != "중앙행정기관" and org and org not in dn:
+        return f"{org} {dn} 조건·지원금액·신청방법"
+    return f"{dn} 조건·지원금액·신청방법 총정리"
+
+
 def render(svc, detail, image_url=None):
     s = merged(svc, detail)
     name = s.get("서비스명", "")
     org = s.get("소관기관명", "")
-    title = f"{display_name(name)} 신청 방법·지원 대상 정리 ({short_org(org)})"
+    title = make_title(s)
     src = s.get("상세조회URL") or f"https://www.gov.kr/portal/rcvfvrSvc/dtlEx/{s.get('서비스ID','')}"
     online = s.get("온라인신청사이트URL")
     updated = re.sub(r"\D", "", s.get("수정일시", ""))[:8]
@@ -559,7 +595,7 @@ def cmd_run(env, n, only=None):
     state = load_state()
     token = access_token(env)
     picked = []
-    pool = [x for x in all_candidates(env) if x["서비스ID"] in only] if only else all_candidates(env)
+    pool = [x for x in all_candidates(env) if x["서비스ID"] in only] if only else all_candidates(env, state)
     for svc in pool:
         if svc["서비스ID"] not in state:
             picked.append((svc, fetch_detail(env, svc["서비스ID"])))
@@ -676,7 +712,7 @@ def cmd_selftest():
            "신청기한": "2026.10.01 ~ 2026.10.05", "접수기관": "복지로", "수정일시": "20260930120000"}
     detail = {"선정기준": svc["지원대상"], "문의처": "콜센터/129||국토부/1599", "수정일시": "2026-09-30", "자치법규": "None"}
     title, content, labels = render(svc, detail)
-    assert "청년월세" in title and "국토교통부" in title
+    assert title.startswith("청년월세") and "조건·지원금액·신청방법" in title
     assert "<li>만 19~34세 무주택 청년<br/>(소득) 중위 60% 이하</li>" in content
     assert "<h2>선정 기준</h2>" not in content, "지원대상과 같으면 생략"
     assert "<p>콜센터/129</p><p>국토부/1599</p>" in content
@@ -688,11 +724,18 @@ def cmd_selftest():
     assert is_expired("2026.05.04~2026.05.20", today=date(2026, 10, 1))
     assert not is_expired("상시신청", today=date(2026, 10, 1))
     assert "<script>" not in render({**svc, "지원내용": "<script>x</script>"}, {})[1]
-    biz = lambda name, body="": {"서비스명": name, "지원내용": body}
+    biz = lambda name, body="", target="소상공인": {"서비스명": name, "지원내용": body, "지원대상": target}
     assert is_money_notice(biz("[경기] 안산시 소상공인 특례보증 추가 지원 계획 공고"))
-    assert is_money_notice(biz("[강원] 화천군 농특산물 직거래 택배비 지원 공고"))
+    assert is_money_notice(biz("[강원] 화천군 농특산물 직거래 택배비 지원 공고", target="농업인"))
     assert not is_money_notice(biz("[부산] 2026년 MICE 우수기업 및 유공 선발 공고", "지원사업"))
     assert not is_money_notice(biz("[제주] 2026년 향토음식점 지정계획 공고"))
+    assert not is_money_notice(biz("[경남] 거창군 승강기 핵심부품 연구개발 지원사업", "지원사업", "중소기업"))
+    assert not is_money_notice(biz("[경기] 부천시 유해물질 시험분석 수수료 지원", "지원", "중소기업"))
+    assert not is_money_notice(biz("[충북] 충주시 택배비 지원사업", "지원", "중소기업")), "기업 대상은 제외"
+    assert is_seasonal({"서비스명": "에너지바우처"}, today=date(2026, 10, 4)) and not is_seasonal({"서비스명": "근로장려금"}, today=date(2026, 10, 4))
+    assert make_title({"서비스명": "버팀목전세자금대출", "소관기관명": "국토교통부", "소관기관유형": "중앙행정기관"}) == "버팀목전세자금대출 조건·지원금액·신청방법 총정리"
+    assert make_title({"서비스명": "출산지원금", "소관기관명": "전라남도 순천시", "소관기관유형": "지방자치단체"}) == "전라남도 순천시 출산지원금 조건·지원금액·신청방법"
+    assert make_title({"서비스ID": "PBLN_1", "서비스명": "[충북] 충주시 소상공인 택배비 지원사업 공고"}) == "충북 충주시 소상공인 택배비 지원사업 조건·신청방법"
     assert deadline_end("20261001 ~ 20261031") == date(2026, 10, 31)
     assert display_name("[경남] 2026년 가족친화인증기업 문화활동비 지원사업 참여기업 모집 공고(일ㆍ생활균형지원사업)") == "경남 가족친화인증기업 문화활동비 지원사업 참여기업"
     assert display_name("[제주] 2026년 하반기 착한가격업소(탐나는 점빵) 모집 공고 안내") == "제주 하반기 착한가격업소"

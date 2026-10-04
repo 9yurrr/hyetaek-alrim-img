@@ -2,7 +2,7 @@ name: daily-publish
 
 on:
   schedule:
-    - cron: "0 0 * * *"   # 매일 09:00 KST (GitHub 부하에 따라 10~30분 늦을 수 있음)
+    - cron: "0 21 * * *"  # 매일 06:00 KST. GitHub 예약은 2~3시간 밀리기도 해서 9시 전후 발행을 노려 새벽으로 당김
   workflow_dispatch:
     inputs:
       n:
