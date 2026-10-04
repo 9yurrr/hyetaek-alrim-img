@@ -136,7 +136,8 @@ PERSONAL_TARGET = r"소상공인|자영업|예비창업|개인|청년|농업인|
 def is_money_notice(x):
     """검색 수요가 있는 '받는 돈' 공고만. 포상·행사·기업 대상 사업은 제외. ponytail: 키워드 휴리스틱, 오분류 보이면 규칙 추가"""
     t = x["서비스명"] + " " + x["지원내용"][:300]
-    personal = re.search(PERSONAL_TARGET, x.get("지원대상", "") + " " + x["서비스명"])
+    target = x.get("지원대상", "")  # 지원대상 칸이 있으면 그것만 본다 (제목의 '청년'은 '청년을 고용하는 기업' 지원일 수 있음)
+    personal = re.search(PERSONAL_TARGET, target if target else x["서비스명"])
     return bool(re.search(MONEY, t)) and bool(personal) and not re.search(NOT_MONEY, x["서비스명"])
 
 
@@ -732,6 +733,7 @@ def cmd_selftest():
     assert not is_money_notice(biz("[경남] 거창군 승강기 핵심부품 연구개발 지원사업", "지원사업", "중소기업"))
     assert not is_money_notice(biz("[경기] 부천시 유해물질 시험분석 수수료 지원", "지원", "중소기업"))
     assert not is_money_notice(biz("[충북] 충주시 택배비 지원사업", "지원", "중소기업")), "기업 대상은 제외"
+    assert not is_money_notice(biz("[울산] 청년 웰스테이 지원사업", "지원사업", "중소기업")), "제목의 청년보다 지원대상 우선"
     assert is_seasonal({"서비스명": "에너지바우처"}, today=date(2026, 10, 4)) and not is_seasonal({"서비스명": "근로장려금"}, today=date(2026, 10, 4))
     assert make_title({"서비스명": "버팀목전세자금대출", "소관기관명": "국토교통부", "소관기관유형": "중앙행정기관"}) == "버팀목전세자금대출 조건·지원금액·신청방법 총정리"
     assert make_title({"서비스명": "출산지원금", "소관기관명": "전라남도 순천시", "소관기관유형": "지방자치단체"}) == "전라남도 순천시 출산지원금 조건·지원금액·신청방법"
