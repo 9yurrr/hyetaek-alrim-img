@@ -199,6 +199,71 @@ def rank_by_search(env, items, top=24):
     return head + tail
 
 
+# 급상승 감시 목록: (네이버 검색어, 보조금24 서비스명 정규식). ponytail: 수동 목록, 새 정책 나오면 여기 추가
+WATCH = [("근로장려금", "근로장려금"), ("자녀장려금", "자녀장려금"), ("청년월세", "청년월세"), ("청년도약계좌", "청년도약계좌"),
+         ("청년내일저축계좌", "청년내일저축"), ("버팀목전세자금대출", "버팀목"), ("디딤돌대출", "디딤돌"), ("신생아특례대출", "신생아"),
+         ("부모급여", "부모급여"), ("아동수당", "아동수당"), ("첫만남이용권", "첫만남"), ("기초연금", "기초연금"),
+         ("에너지바우처", "에너지바우처"), ("난방비지원", "난방비"), ("국민내일배움카드", "내일배움카드"), ("국민취업지원제도", "국민취업지원"),
+         ("실업급여", "구직급여"), ("긴급복지", "긴급복지"), ("주거급여", "주거급여"), ("교육급여", "교육급여"),
+         ("소상공인정책자금", "소상공인.*자금"), ("햇살론", "햇살론"), ("청년주택드림", "청년주택드림"), ("민생지원금", "민생|지원금"),
+         ("소비쿠폰", "소비쿠폰"), ("문화누리카드", "문화누리"), ("평생교육이용권", "평생교육이용권"), ("출산지원금", "출산.*지원금"),
+         ("육아휴직급여", "육아휴직"), ("장애인연금", "장애인연금")]
+TRENDS_PATH = HERE / "trends.json"
+
+
+def detect_spikes(env, ratio=1.8, min_level=0.03):
+    """최근 3일 검색량이 지난 4주 평균의 ratio배 이상 + 기준어 대비 min_level 이상이면 급상승. 하루 8회 호출."""
+    cid, sec = env.get("NAVER_CLIENT_ID"), env.get("NAVER_CLIENT_SECRET")
+    if not (cid and sec):
+        return []
+    end = date.today() - timedelta(days=1)
+    words = [w for w, _ in WATCH if w != ANCHOR]
+    spikes = []
+    for i in range(0, len(words), 4):
+        groups = [{"groupName": w, "keywords": [w]} for w in [ANCHOR] + words[i:i + 4]]
+        try:
+            r = requests.post(DATALAB_URL, timeout=30, headers={"X-NCP-APIGW-API-KEY-ID": cid, "X-NCP-APIGW-API-KEY": sec},
+                              json={"startDate": f"{end - timedelta(days=34):%Y-%m-%d}", "endDate": f"{end:%Y-%m-%d}",
+                                    "timeUnit": "date", "keywordGroups": groups})
+            r.raise_for_status()
+        except requests.RequestException as e:
+            print("급상승 감지 실패:", e)
+            return []
+        series = {g["title"]: [p["ratio"] for p in g["data"]] for g in r.json()["results"]}
+        a = series.get(ANCHOR) or [1]
+        anchor_avg = sum(a) / len(a) or 1
+        for w, s in series.items():
+            if w == ANCHOR and i:  # 기준어는 첫 배치에서만 판정
+                continue
+            if len(s) < 10:
+                continue
+            recent, base = sum(s[-3:]) / 3, sum(s[:-3]) / len(s[:-3])
+            if recent / anchor_avg >= min_level and recent >= ratio * max(base, 0.01):
+                spikes.append({"keyword": w, "x": round(recent / max(base, 0.01), 1), "level": round(recent / anchor_avg, 2)})
+    spikes.sort(key=lambda s: -s["x"])
+    return spikes
+
+
+def boost_spikes(env, items, spikes, state):
+    """급상승 검색어에 맞는 혜택을 맨 앞으로. 후보에 없으면 보조금24에서 이름으로 찾아옴."""
+    pat = dict(WATCH)
+    front = []
+    for sp in spikes:
+        p = pat[sp["keyword"]]
+        hit = [x for x in items if re.search(p, x["서비스명"])]
+        if not hit:
+            try:
+                rows = gov24_get("serviceList", env, page=1, perPage=20, **{"cond[서비스명::LIKE]": re.split(r"[.|*]", p)[0]})["data"]
+            except requests.RequestException:
+                rows = []
+            hit = [x for x in rows if re.search(p, x["서비스명"]) and x["서비스ID"] not in state and not is_expired(x.get("신청기한"))]
+            hit.sort(key=lambda x: x.get("소관기관유형") != "중앙행정기관")
+        sp["picked"] = hit[0]["서비스명"] if hit else None  # None = 이미 다 올렸거나 맞는 혜택 없음
+        front += hit[:1]
+    ids = {x["서비스ID"] for x in front}
+    return front + [x for x in items if x["서비스ID"] not in ids]
+
+
 BIZ_PER_RUN = 1  # 기업마당 공고는 하루 최대 1편 (지역·마감 공고라 검색 수요가 작음)
 
 
@@ -206,6 +271,10 @@ def all_candidates(env, state=None):
     """보조금24 전국 개인 혜택 위주, 기업마당은 아직 안 올린 것 중 1편만 섞음."""
     state = state or {}
     a = rank_by_search(env, [x for x in fetch_candidates(env) if x["서비스ID"] not in state])
+    spikes = detect_spikes(env)
+    a = boost_spikes(env, a, spikes, state)
+    print("급상승:", ", ".join(f"{s['keyword']} {s['x']}배→{s['picked'] or '올릴 글 없음'}" for s in spikes) or "없음")
+    TRENDS_PATH.write_text(json.dumps({"date": f"{date.today()}", "spikes": spikes}, ensure_ascii=False, indent=1), encoding="utf-8")
     b = [x for x in fetch_bizinfo(env) if x["서비스ID"] not in state][:BIZ_PER_RUN]
     return a[:2] + b + a[2:]  # 기업마당 1편은 3번째 자리 (하루 5편 안에 들어가게)
 

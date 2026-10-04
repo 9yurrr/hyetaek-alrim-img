@@ -39,5 +39,5 @@ jobs:
       - name: save state (발행 기록은 실패해도 남김)
         if: always()
         run: |
-          git add state.json hubs.json
+          git add state.json hubs.json trends.json
           git diff --cached --quiet || (git commit -m "state: $(date -u +%F)" && git pull --rebase -q origin main && git push)
