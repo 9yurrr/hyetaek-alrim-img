@@ -36,7 +36,7 @@ def _clean_secret(k, v):
 
 
 def load_env():
-    env = {k: _clean_secret(k, v) for k, v in os.environ.items() if k.startswith(("DATA_GO_KR_", "BLOGGER_"))}
+    env = {k: _clean_secret(k, v) for k, v in os.environ.items() if k.startswith(("DATA_GO_KR_", "BLOGGER_", "NAVER_"))}
     if ENV_PATH.exists():
         for line in ENV_PATH.read_text(encoding="utf-8").splitlines():
             if "=" in line and not line.lstrip().startswith("#"):
@@ -153,13 +153,58 @@ def fetch_bizinfo(env, rows=100):
     return items
 
 
+# ---------- 네이버 데이터랩 검색어트렌드 (NAVER API HUB) ----------
+DATALAB_URL = "https://naverapihub.apigw.ntruss.com/search-trend/v1/search"
+ANCHOR = "근로장려금"  # 모든 배치에 넣는 기준 검색어 → 배치가 달라도 같은 잣대로 비교
+
+
+def search_keyword(name):
+    """혜택 이름 → 사람들이 검색할 법한 짧은 검색어."""
+    k = re.sub(r"\s*(지원|지급|사업|제공|서비스)$", "", display_name(name)).strip()
+    return k[:20] or display_name(name)[:20]
+
+
+def datalab_scores(env, names):
+    """최근 4주 네이버 검색량을 ANCHOR 대비 비율로. 키가 없거나 실패하면 빈 dict (발행은 그대로 진행)."""
+    cid, sec = env.get("NAVER_CLIENT_ID"), env.get("NAVER_CLIENT_SECRET")
+    if not (cid and sec):
+        return {}
+    end = date.today() - timedelta(days=1)
+    scores = {}
+    for i in range(0, len(names), 4):  # 한 번에 5개 그룹: 기준어 1 + 후보 4
+        batch = names[i:i + 4]
+        groups = [{"groupName": ANCHOR, "keywords": [ANCHOR]}] + [{"groupName": f"g{j}", "keywords": [search_keyword(n)]} for j, n in enumerate(batch)]
+        try:
+            r = requests.post(DATALAB_URL, timeout=30, headers={"X-NCP-APIGW-API-KEY-ID": cid, "X-NCP-APIGW-API-KEY": sec},
+                              json={"startDate": f"{end - timedelta(days=28):%Y-%m-%d}", "endDate": f"{end:%Y-%m-%d}",
+                                    "timeUnit": "week", "keywordGroups": groups})
+            r.raise_for_status()
+        except requests.RequestException as e:
+            print("데이터랩 실패(순서는 조회수 기준 유지):", e)
+            return {}
+        avg = {g["title"]: sum(p["ratio"] for p in g["data"]) / max(len(g["data"]), 1) for g in r.json()["results"]}
+        base = avg.get(ANCHOR) or 1
+        for j, n in enumerate(batch):
+            scores[n] = avg.get(f"g{j}", 0) / base
+    return scores
+
+
+def rank_by_search(env, items, top=24):
+    """상위 후보만 네이버 검색량 순으로 재정렬 (시즌 혜택은 맨 앞 유지). 하루 ~6회 호출."""
+    head, tail = items[:top], items[top:]
+    sc = datalab_scores(env, [x["서비스명"] for x in head])
+    if sc:
+        head.sort(key=lambda x: (not is_seasonal(x), -sc.get(x["서비스명"], 0)))
+    return head + tail
+
+
 BIZ_PER_RUN = 1  # 기업마당 공고는 하루 최대 1편 (지역·마감 공고라 검색 수요가 작음)
 
 
 def all_candidates(env, state=None):
     """보조금24 전국 개인 혜택 위주, 기업마당은 아직 안 올린 것 중 1편만 섞음."""
     state = state or {}
-    a = fetch_candidates(env)
+    a = rank_by_search(env, [x for x in fetch_candidates(env) if x["서비스ID"] not in state])
     b = [x for x in fetch_bizinfo(env) if x["서비스ID"] not in state][:BIZ_PER_RUN]
     return a[:2] + b + a[2:]  # 기업마당 1편은 3번째 자리 (하루 5편 안에 들어가게)
 
