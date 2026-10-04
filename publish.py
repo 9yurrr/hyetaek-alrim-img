@@ -260,6 +260,13 @@ def boost_spikes(env, items, spikes, state):
             hit.sort(key=lambda x: x.get("소관기관유형") != "중앙행정기관")
         sp["picked"] = hit[0]["서비스명"] if hit else None  # None = 이미 다 올렸거나 맞는 혜택 없음
         front += hit[:1]
+        if not hit:  # 새로 올릴 게 없으면 → 이미 올린 글을 맨 위로 다시 올릴 후보
+            try:
+                rows = gov24_get("serviceList", env, page=1, perPage=20, **{"cond[서비스명::LIKE]": re.split(r"[.|*]", p)[0]})["data"]
+            except requests.RequestException:
+                rows = []
+            old = [x for x in rows if re.search(p, x["서비스명"]) and "draft" not in state.get(x["서비스ID"], {"status": "draft"}).get("status", "")]
+            sp["bump"] = old[0]["서비스ID"] if old else None
     ids = {x["서비스ID"] for x in front}
     return front + [x for x in items if x["서비스ID"] not in ids]
 
@@ -734,8 +741,42 @@ def cmd_run(env, n, only=None):
         print("발행:", post["url"])
         if i < len(picked) - 1:
             time.sleep(20)  # ponytail: 고정 간격, Blogger 스팸 판정 보이면 하루 단위 분산으로
-    if picked:
+    bumped = False if only else bump_old_posts(env, token, state)
+    if picked or bumped:
         update_hubs(token)
+
+
+BUMP_COOLDOWN_DAYS = 14
+
+
+def bump_old_posts(env, token, state):
+    """급상승인데 이미 올린 혜택이면: 최신 정보로 본문을 고치고 발행일을 지금으로 → 홈 맨 위. 하루 1편, 같은 글은 14일에 1번."""
+    try:
+        spikes = json.loads(TRENDS_PATH.read_text(encoding="utf-8")).get("spikes", [])
+    except (OSError, ValueError):
+        return False
+    for sp in spikes:
+        sid = sp.get("bump")
+        if not sid or sid not in state:
+            continue
+        last = state[sid].get("bumped") or state[sid]["at"]
+        if datetime.now() - datetime.fromisoformat(last) < timedelta(days=BUMP_COOLDOWN_DAYS):
+            continue
+        url = f"{API}/posts/{state[sid]['postId']}"
+        cur = requests.get(url, headers={"Authorization": f"Bearer {token}"}, timeout=30).json()
+        img = re.search(r'<img[^>]+src="([^"]+)"', cur.get("content", ""))
+        svc = gov24_get("serviceList", env, page=1, perPage=1, **{"cond[서비스ID::EQ]": sid})["data"][0]
+        title, content, labels = render(svc, fetch_detail(env, sid), image_url=img.group(1) if img else None)
+        content = with_related(content, related_block(token, labels, hubs=load_hubs(), exclude_url=state[sid]["url"]))
+        r = requests.patch(url, headers={"Authorization": f"Bearer {token}"}, timeout=60,
+                           json={"title": title, "content": content, "labels": labels,
+                                 "published": datetime.now().astimezone().isoformat(timespec="seconds")})
+        r.raise_for_status()
+        state[sid]["bumped"] = datetime.now().isoformat(timespec="seconds")
+        STATE_PATH.write_text(json.dumps(state, ensure_ascii=False, indent=1), encoding="utf-8")
+        print(f"다시 올림({sp['keyword']} 급상승):", state[sid]["url"])
+        return True
+    return False
 
 
 # ---------- 카테고리 허브 페이지 · 관련 글 (내부 링크) ----------
