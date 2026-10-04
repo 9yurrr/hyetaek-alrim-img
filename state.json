@@ -27,7 +27,8 @@
   "postId": "9002386552367735929",
   "url": "https://hyetaek-alrim.blogspot.com/2026/10/gangwon-hwacheongun-2026nyeon.html",
   "updated": "2026-10-01 15:13:16",
-  "at": "2026-10-02T09:15:14"
+  "at": "2026-10-02T09:15:14",
+  "status": "draft(기업 대상)"
  },
  "PBLN_000000000126936": {
   "postId": "3410572333205232106",
@@ -45,7 +46,8 @@
   "postId": "1198086967815520974",
   "url": "https://hyetaek-alrim.blogspot.com/2026/10/gyeongnam-2026nyeon.html",
   "updated": "2026-10-01 15:16:28",
-  "at": "2026-10-02T09:16:39"
+  "at": "2026-10-02T09:16:39",
+  "status": "draft(기업 대상)"
  },
  "161300000103": {
   "postId": "6962765760376103497",
@@ -57,13 +59,15 @@
   "postId": "6937120340939515822",
   "url": "https://hyetaek-alrim.blogspot.com/2026/10/gimhaesi-geojesi-cheongnyeonyeoseong.html",
   "updated": "2026-10-02 15:11:26",
-  "at": "2026-10-03T02:44:36"
+  "at": "2026-10-03T02:44:36",
+  "status": "draft(기업 대상)"
  },
  "PBLN_000000000126971": {
   "postId": "4795598803496514939",
   "url": "https://hyetaek-alrim.blogspot.com/2026/10/bucheonsi-10wol-yuhaemuljil.html",
   "updated": "2026-10-02 15:11:26",
-  "at": "2026-10-03T02:45:00"
+  "at": "2026-10-03T02:45:00",
+  "status": "draft(기업 대상)"
  },
  "PBLN_000000000126964": {
   "postId": "8912609243104779028",
@@ -75,13 +79,15 @@
   "postId": "4525724562732263277",
   "url": "https://hyetaek-alrim.blogspot.com/2026/10/3bungi-sogieop-hyeoksinyeokryang.html",
   "updated": "2026-10-02 15:11:26",
-  "at": "2026-10-03T02:45:48"
+  "at": "2026-10-03T02:45:48",
+  "status": "draft(기업 대상)"
  },
  "PBLN_000000000126953": {
   "postId": "2125446593847843066",
   "url": "https://hyetaek-alrim.blogspot.com/2026/10/cheongnyeon-welseutei-jiwonsaeop-chuga.html",
   "updated": "2026-10-02 15:11:26",
-  "at": "2026-10-03T02:46:13"
+  "at": "2026-10-03T02:46:13",
+  "status": "draft(기업 대상)"
  },
  "161300000076": {
   "postId": "909306715353863352",
@@ -93,7 +99,8 @@
   "postId": "1170681696372469734",
   "url": "https://hyetaek-alrim.blogspot.com/2026/10/yeongojawon-hwalyong-pudeutekeusaneop.html",
   "updated": "2026-10-02 15:11:26",
-  "at": "2026-10-04T03:15:53"
+  "at": "2026-10-04T03:15:53",
+  "status": "draft(기업 대상)"
  },
  "161300000088": {
   "postId": "350458573515641044",
@@ -105,12 +112,14 @@
   "postId": "7876333151694501775",
   "url": "https://hyetaek-alrim.blogspot.com/2026/10/gumisi-yebisusojeonmungieop-yukseong.html",
   "updated": "2026-10-02 15:11:26",
-  "at": "2026-10-04T03:16:42"
+  "at": "2026-10-04T03:16:42",
+  "status": "draft(기업 대상)"
  },
  "PBLN_000000000126945": {
   "postId": "794282211469310472",
   "url": "https://hyetaek-alrim.blogspot.com/2026/10/geochanggun-3cha-seungganggi.html",
   "updated": "2026-10-02 15:11:26",
-  "at": "2026-10-04T03:17:05"
+  "at": "2026-10-04T03:17:05",
+  "status": "draft(기업 대상)"
  }
 }
