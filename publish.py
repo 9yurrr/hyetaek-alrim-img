@@ -193,6 +193,7 @@ def rank_by_search(env, items, top=24):
     """상위 후보만 네이버 검색량 순으로 재정렬 (시즌 혜택은 맨 앞 유지). 하루 ~6회 호출."""
     head, tail = items[:top], items[top:]
     sc = datalab_scores(env, [x["서비스명"] for x in head])
+    print(f"데이터랩: 후보 {len(sc)}개 검색량 반영" if sc else "데이터랩: 미사용(키 없음/실패) → 조회수 순")
     if sc:
         head.sort(key=lambda x: (not is_seasonal(x), -sc.get(x["서비스명"], 0)))
     return head + tail
