@@ -389,6 +389,7 @@ def display_name(name):
     n = re.sub(r"\([^)]*\)", " ", n)
     n = re.sub(r"20\d\d년(도)?\s*|\s*(모집\s*)?(공고|안내)(\s*안내)?\s*$", " ", n)
     n = re.sub(r"\s*(공고|안내)\s*$", "", re.sub(r"\s+", " ", n).strip())
+    n = re.sub(r"\s+(제?\d+차\s*)?(변경|수정|정정)$", "", n)  # "융자사업 5차 변경" → "융자사업" (공고 개정 표시는 독자에게 무의미)
     return re.sub(r"\s+", " ", n).strip() or str(name)
 
 
