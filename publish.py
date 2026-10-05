@@ -936,4 +936,5 @@ if __name__ == "__main__":
     else:
         env = load_env()
         {"auth": lambda: cmd_auth(env), "preview": lambda: cmd_preview(env, n), "run": lambda: cmd_run(env, n, only),
-         "hubs": lambda: update_hubs(access_token(env)), "related": lambda: cmd_backfill_related(env)}[cmd]()
+         "hubs": lambda: update_hubs(access_token(env)), "related": lambda: cmd_backfill_related(env),
+         "trends": lambda: print("데이터랩 점수:", len(datalab_scores(env, ["아동수당"])), "/ 급상승:", detect_spikes(env))}[cmd]()  # 발행 없이 네이버 연결 확인

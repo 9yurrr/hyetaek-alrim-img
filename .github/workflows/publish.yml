@@ -8,6 +8,9 @@ on:
       n:
         description: "발행할 글 수"
         default: "5"
+      cmd:
+        description: "run=발행, trends=네이버 연결만 확인"
+        default: "run"
 
 permissions:
   contents: write
@@ -28,7 +31,7 @@ jobs:
           git config user.name "9yurrr"
           git config user.email "9yurrr@users.noreply.github.com"
       - name: publish
-        run: python publish.py run ${{ inputs.n || '5' }}
+        run: python publish.py ${{ inputs.cmd || 'run' }} ${{ inputs.n || '5' }}
         env:
           DATA_GO_KR_API_KEY: ${{ secrets.DATA_GO_KR_API_KEY }}
           BLOGGER_CLIENT_ID: ${{ secrets.BLOGGER_CLIENT_ID }}
