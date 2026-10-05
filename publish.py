@@ -180,7 +180,7 @@ def datalab_scores(env, names):
                                     "timeUnit": "week", "keywordGroups": groups})
             r.raise_for_status()
         except requests.RequestException as e:
-            print("데이터랩 실패(순서는 조회수 기준 유지):", e)
+            print("데이터랩 실패(순서는 조회수 기준 유지):", e, getattr(e.response, "text", "")[:200])
             return {}
         avg = {g["title"]: sum(p["ratio"] for p in g["data"]) / max(len(g["data"]), 1) for g in r.json()["results"]}
         base = avg.get(ANCHOR) or 1
@@ -227,7 +227,7 @@ def detect_spikes(env, ratio=1.8, min_level=0.03):
                                     "timeUnit": "date", "keywordGroups": groups})
             r.raise_for_status()
         except requests.RequestException as e:
-            print("급상승 감지 실패:", e)
+            print("급상승 감지 실패:", e, getattr(e.response, "text", "")[:200])
             return []
         series = {g["title"]: [p["ratio"] for p in g["data"]] for g in r.json()["results"]}
         a = series.get(ANCHOR) or [1]
@@ -700,7 +700,7 @@ IMG_CDN = "https://cdn.jsdelivr.net/gh/9yurrr/hyetaek-alrim-img@main/cards"
 def push_cards(paths):
     import subprocess
     git = lambda *a: subprocess.run(["git", "-C", str(IMG_REPO), *a], check=True, capture_output=True, text=True)
-    git("pull", "--rebase", "-q", "origin", "main")
+    git("pull", "--rebase", "--autostash", "-q", "origin", "main")  # trends.json 등 이번 실행에서 바뀐 파일이 있어도 받기
     git("add", *[str(p.relative_to(IMG_REPO)) for p in paths])
     git("commit", "-m", f"Add {len(paths)} cards")
     git("push", "origin", "main")
