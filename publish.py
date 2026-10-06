@@ -15,7 +15,7 @@
   BLOGGER_REFRESH_TOKEN=...         # auth 명령이 채움
 """
 import html, json, os, re, sys, threading, time, urllib.parse, webbrowser
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
@@ -715,9 +715,25 @@ def wait_cdn(url, tries=10):
     raise RuntimeError(f"CDN에 이미지가 아직 없음: {url}")
 
 
+def posted_today(token):
+    """한국시간 오늘 0시 이후 공개된 글 수 (다시 올린 글 포함)."""
+    kst = timezone(timedelta(hours=9))
+    start = datetime.now(kst).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+    r = requests.get(f"{API}/posts", headers={"Authorization": f"Bearer {token}"}, timeout=30,
+                     params={"startDate": start, "fetchBodies": "false", "maxResults": 50, "status": "live"})
+    r.raise_for_status()
+    return len(r.json().get("items", []))
+
+
 def cmd_run(env, n, only=None):
     state = load_state()
     token = access_token(env)
+    if os.environ.get("GITHUB_EVENT_NAME") == "schedule" and not only:
+        done = posted_today(token)
+        if done >= n:  # 수동으로 이미 올린 날은 예약 실행이 더 올리지 않음 (하루 n편 유지)
+            print(f"오늘(한국시간) 이미 {done}편 발행 → 예약 실행 건너뜀")
+            return
+        n -= done
     picked = []
     pool = [x for x in all_candidates(env) if x["서비스ID"] in only] if only else all_candidates(env, state)
     for svc in pool:
