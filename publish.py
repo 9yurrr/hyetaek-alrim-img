@@ -728,10 +728,10 @@ def posted_today(token):
 def cmd_run(env, n, only=None):
     state = load_state()
     token = access_token(env)
-    if os.environ.get("GITHUB_EVENT_NAME") == "schedule" and not only:
+    if not only:  # 예약·수동 실행 모두 하루(한국시간) n편까지만
         done = posted_today(token)
-        if done >= n:  # 수동으로 이미 올린 날은 예약 실행이 더 올리지 않음 (하루 n편 유지)
-            print(f"오늘(한국시간) 이미 {done}편 발행 → 예약 실행 건너뜀")
+        if done >= n:  # 그날 이미 올린 만큼 빼고 발행 → 하루 최대 n편
+            print(f"오늘(한국시간) 이미 {done}편 발행 → 건너뜀 (하루 5편 제한)")
             return
         n -= done
     picked = []
