@@ -202,7 +202,7 @@ def rank_by_search(env, items, top=24):
 # 급상승 감시 목록: (네이버 검색어, 보조금24 서비스명 정규식). ponytail: 수동 목록, 새 정책 나오면 여기 추가
 WATCH = [("근로장려금", "근로.자녀장려금|^근로장려금"), ("자녀장려금", "근로.자녀장려금|^자녀장려금"), ("청년월세", "청년월세"), ("청년도약계좌", "청년도약계좌"),
          ("청년내일저축계좌", "청년내일저축"), ("버팀목전세자금대출", "버팀목"), ("디딤돌대출", "디딤돌.*대출"), ("신생아특례대출", "신생아.*대출"),
-         ("부모급여", "부모급여"), ("아동수당", "아동수당"), ("첫만남이용권", "첫만남"), ("기초연금", "^기초연금($| 지급| 지원)"),
+         ("부모급여", "^부모급여"), ("아동수당", "^아동수당($| 지급| 지원)"), ("첫만남이용권", "첫만남"), ("기초연금", "^기초연금($| 지급| 지원)"),
          ("에너지바우처", "에너지바우처"), ("난방비지원", "(?<!냉)난방비"), ("국민내일배움카드", "내일배움카드"), ("국민취업지원제도", "국민취업지원"),
          ("실업급여", "^구직급여$"), ("긴급복지", "긴급복지"), ("주거급여", "^주거급여|저소득층 주거급여"), ("교육급여", "^교육급여"),
          ("소상공인정책자금", "소상공인.*자금"), ("햇살론", "햇살론"), ("청년주택드림", "청년주택드림"), ("민생지원금", "민생(지원|회복)"),
@@ -245,28 +245,27 @@ def detect_spikes(env, ratio=1.8, min_level=0.03):
 
 
 def boost_spikes(env, items, spikes, state):
-    """급상승 검색어에 맞는 혜택을 맨 앞으로. 후보에 없으면 보조금24에서 이름으로 찾아옴."""
+    """급상승 검색어에 맞는 혜택을 맨 앞으로. 전국 혜택 새 글 > 이미 올린 글 다시 올리기 > 지역 혜택 새 글 순.
+    (전국 단위로 검색이 늘었는데 특정 구·군 혜택을 올리면 검색자와 안 맞음)"""
     pat = dict(WATCH)
     front = []
     for sp in spikes:
         p = pat[sp["keyword"]]
-        hit = [x for x in items if re.search(p, x["서비스명"])]
-        if not hit:
-            try:
-                rows = gov24_get("serviceList", env, page=1, perPage=50, **{"cond[서비스명::LIKE]": max(re.split(r"[^가-힣A-Za-z0-9]+", p), key=len)})["data"]
-            except requests.RequestException:
-                rows = []
-            hit = [x for x in rows if re.search(p, x["서비스명"]) and x["서비스ID"] not in state and not is_expired(x.get("신청기한"))]
-            hit.sort(key=lambda x: x.get("소관기관유형") != "중앙행정기관")
-        sp["picked"] = hit[0]["서비스명"] if hit else None  # None = 이미 다 올렸거나 맞는 혜택 없음
-        front += hit[:1]
-        if not hit:  # 새로 올릴 게 없으면 → 이미 올린 글을 맨 위로 다시 올릴 후보
-            try:
-                rows = gov24_get("serviceList", env, page=1, perPage=50, **{"cond[서비스명::LIKE]": max(re.split(r"[^가-힣A-Za-z0-9]+", p), key=len)})["data"]
-            except requests.RequestException:
-                rows = []
-            old = [x for x in rows if re.search(p, x["서비스명"]) and "draft" not in state.get(x["서비스ID"], {"status": "draft"}).get("status", "")]
-            sp["bump"] = old[0]["서비스ID"] if old else None
+        try:
+            rows = gov24_get("serviceList", env, page=1, perPage=50, **{"cond[서비스명::LIKE]": max(re.split(r"[^가-힣A-Za-z0-9]+", p), key=len)})["data"]
+        except requests.RequestException:
+            rows = []
+        seen, new = set(), []
+        for x in [x for x in items if re.search(p, x["서비스명"])] + rows:
+            if re.search(p, x["서비스명"]) and x["서비스ID"] not in state and x["서비스ID"] not in seen and not is_expired(x.get("신청기한")):
+                seen.add(x["서비스ID"]); new.append(x)
+        national = [x for x in new if x.get("소관기관유형") == "중앙행정기관"]
+        old = [x for x in rows if re.search(p, x["서비스명"]) and "draft" not in state.get(x["서비스ID"], {"status": "draft"}).get("status", "")]
+        old = [x for x in old if x.get("소관기관유형") == "중앙행정기관"]  # 다시 올리기는 전국 혜택 글만
+        pick = national[:1] or ([] if old else new[:1])
+        sp["picked"] = pick[0]["서비스명"] if pick else None
+        sp["bump"] = old[0]["서비스ID"] if old and not national else None
+        front += pick
     ids = {x["서비스ID"] for x in front}
     return front + [x for x in items if x["서비스ID"] not in ids]
 
