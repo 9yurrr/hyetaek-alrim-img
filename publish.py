@@ -245,7 +245,7 @@ def detect_spikes(env, ratio=1.8, min_level=0.03):
 
 
 def boost_spikes(env, items, spikes, state):
-    """급상승 검색어에 맞는 혜택을 맨 앞으로. 전국 혜택 새 글 > 이미 올린 글 다시 올리기 > 지역 혜택 새 글 순.
+    """급상승 검색어에 맞는 전국 혜택을 맨 앞으로. 전국 새 글이 없으면 이미 올린 전국 글을 다시 올림.
     (전국 단위로 검색이 늘었는데 특정 구·군 혜택을 올리면 검색자와 안 맞음)"""
     pat = dict(WATCH)
     front = []
@@ -262,7 +262,7 @@ def boost_spikes(env, items, spikes, state):
         national = [x for x in new if x.get("소관기관유형") == "중앙행정기관"]
         old = [x for x in rows if re.search(p, x["서비스명"]) and "draft" not in state.get(x["서비스ID"], {"status": "draft"}).get("status", "")]
         old = [x for x in old if x.get("소관기관유형") == "중앙행정기관"]  # 다시 올리기는 전국 혜택 글만
-        pick = national[:1] or ([] if old else new[:1])
+        pick = national[:1]  # 지역 혜택은 급상승으로 끌어올리지 않음 (전국 검색 증가 ↔ 특정 군·구 혜택은 안 맞음, 10/7·10/8 두 번 발생)
         sp["picked"] = pick[0]["서비스명"] if pick else None
         sp["bump"] = old[0]["서비스ID"] if old and not national else None
         front += pick
