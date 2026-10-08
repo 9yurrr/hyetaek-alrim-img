@@ -499,7 +499,7 @@ def render(svc, detail, image_url=None):
     body = [f'<p><img src="{image_url}" alt="{html.escape(name)} 지원 대상·내용·신청기한 요약" width="1200" height="675"/></p>'] if image_url else []
     body += [
         f"<p>{html.escape(re.sub(BULLET, '', summary))}</p>",
-        "<h2>한눈에 보기</h2><table>"
+        "<!--more--><h2>한눈에 보기</h2><table>"  # 점프 구분선: 홈 목록 요약이 소개 문단에서 끝나게
         + "".join(f"<tr><th>{k}</th><td>{v}</td></tr>" for k, v in rows)
         + f"<tr><th>맡은 기관</th><td>{html.escape(org)}</td></tr></table>",
     ]
