@@ -1,17 +1,17 @@
 {
- "date": "2026-10-08",
+ "date": "2026-10-09",
  "spikes": [
   {
    "keyword": "소상공인정책자금",
-   "x": 2.9,
-   "level": 2.15,
-   "picked": "소상공인 융자금 보증수수료 지원",
+   "x": 3.0,
+   "level": 2.38,
+   "picked": null,
    "bump": null
   },
   {
    "keyword": "청년도약계좌",
    "x": 1.9,
-   "level": 0.68,
+   "level": 0.75,
    "picked": null,
    "bump": null
   }
