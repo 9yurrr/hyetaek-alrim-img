@@ -1,19 +1,4 @@
 {
- "date": "2026-10-09",
- "spikes": [
-  {
-   "keyword": "소상공인정책자금",
-   "x": 3.0,
-   "level": 2.38,
-   "picked": null,
-   "bump": null
-  },
-  {
-   "keyword": "청년도약계좌",
-   "x": 1.9,
-   "level": 0.75,
-   "picked": null,
-   "bump": null
-  }
- ]
+ "date": "2026-10-10",
+ "spikes": []
 }
