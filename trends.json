@@ -1,4 +1,26 @@
 {
  "date": "2026-10-10",
- "spikes": []
+ "spikes": [
+  {
+   "keyword": "청년내일저축계좌",
+   "x": 2.4,
+   "level": 0.35,
+   "picked": null,
+   "bump": null
+  },
+  {
+   "keyword": "청년도약계좌",
+   "x": 1.9,
+   "level": 0.9,
+   "picked": null,
+   "bump": null
+  },
+  {
+   "keyword": "부모급여",
+   "x": 1.8,
+   "level": 0.19,
+   "picked": null,
+   "bump": null
+  }
+ ]
 }
